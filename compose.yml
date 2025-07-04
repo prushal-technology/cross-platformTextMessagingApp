@@ -1,0 +1,9 @@
+services:
+  cpp-writer:
+  # Use the 'build' instruction to tell Docker Compose to build the image
+    # from the Dockerfile in the current directory ('.').
+    build: .
+
+    # used to persist the created file
+    volumes:
+      - ./output:/app
