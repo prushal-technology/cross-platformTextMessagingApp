@@ -5,7 +5,7 @@
 #include <cstring>
 
 #define SERVER_IP "127.0.0.1"
-#define PORT 3000       //a free port for local hosting
+#define PORT 8080       //a free port for local hosting
 #define BUFFER_SIZE 1024
 #define TOTAL_CONNECTIONS 5
 
@@ -97,6 +97,21 @@ int main(){
     
         std::cout << "Server: ";
         std::getline(std::cin, message);        //use the message variable to do the same
+        if(message == "disconnect"){
+            std::cout << "Closing Server\n";
+            break;
+        }
+        
+        ssize_t bytes_sent = send(incoming_socket, message.c_str(), message.length(), 0);
+        if(bytes_sent == -1){
+            perror("Failed to send message\n");
+            // close(server_fd);    already done outside the loop
+            break;
+        }
+        else if(bytes_sent == 0){
+            perror("Client closed connection\n");
+            break;
+        } 
         
     }
 

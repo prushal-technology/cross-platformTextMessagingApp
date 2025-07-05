@@ -7,7 +7,7 @@
 
 #define SERVER_IP "127.0.0.1"       //local host
 #define PORT 8080                   //some port to listen for messages
-#define BUFFER_SIZE 1024            //message buffer size
+#define BUFFER_SIZE 1024           //message buffer size
 
 int main(){
     int client_socket;      //this is the socket aka gateway - basically the "door"
@@ -32,11 +32,19 @@ int main(){
         return EXIT_FAILURE;
     }
 
+    //YOU FORGOT TO CONNECT CLIENT TO SERVER BRUH
+
+    if(connect(client_socket, (struct sockaddr*)& server_addr, sizeof(server_addr))){
+        perror("Connectoin Failed\n");
+        close(client_socket);
+        return EXIT_FAILURE;
+    }
+
     std::cout << "Connected to server\n";
     std::cout << "Server IP: " << SERVER_IP << " : " << PORT << '\n';
     std::cout << "Type 'leave' to disconnect\n";
 
-    std::strjg message;        //don't initialize it
+    std::string message;        //don't initialize it
 
     //Infinite loop to send messages 
 
