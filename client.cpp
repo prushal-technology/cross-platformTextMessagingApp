@@ -14,7 +14,7 @@ int main(){
     struct sockaddr_in server_addr; // Structure to hold server's address information ; comes from <netinet/in.h>
     char buffer[BUFFER_SIZE] = {0};     //initialize entire array with 0
 
-    //create a socket
+    //Create a socket
 
     if((client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0){
         perror("Error: Socket creatoin failed\n");  //basically prints this message with the error
@@ -24,8 +24,8 @@ int main(){
     server_addr.sin_family = AF_INET;       //af_inet tells us we're using IPv4 ; https://www.gta.ufrj.br/ensino/eel878/sockets/sockaddr_inman.html
     server_addr.sin_port = htons(PORT);     //htons converts PORT Number to network byte order
 
-    //check for server address
-    // https://man7.org/linux/man-pages/man3/inet_pton.3.html for inet_pton
+    //Check for server address
+
     if(inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr) <=0){
         perror("Error: Invalid address\n");
         close(client_socket);
@@ -36,7 +36,9 @@ int main(){
     std::cout << "Server IP: " << SERVER_IP << " : " << PORT << '\n';
     std::cout << "Type 'leave' to disconnect\n";
 
-    std::string message;        //don't initialize it
+    std::strjg message;        //don't initialize it
+
+    //Infinite loop to send messages 
 
     while(true){
         //inifinite loop to accept message 
