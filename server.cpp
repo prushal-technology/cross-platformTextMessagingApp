@@ -4,10 +4,47 @@
 #include <arpa/inet.h>
 #include <cstring>
 
+//for multithreading
+#include <thread>
+#include <vector>
+#include <atomic>
+
 #define SERVER_IP "127.0.0.1"
 #define PORT 8080       //a free port for local hosting
 #define BUFFER_SIZE 1024
 #define TOTAL_CONNECTIONS 5
+
+
+std::atomic<bool> server_running(true);
+
+void handle_client(int client_socket, struct sockaddr_in client_addr){
+    char buffer[BUFFER_SIZE] = {0};
+    std::cout << "Client connected from: " << inet_ntoa(client_addr.sin_addr) 
+        << " " << client_addr.sin_port << '\n';
+
+    while(server_running.load()){
+        std::memset(buffer, 0, BUFFER_SIZE);
+
+        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        if(bytes_received < 0){
+            perror("Failed to receive message from client\n");
+            break;
+        } 
+        else if(bytes_received == 0){
+            std::cout << "Client has disconnected\n";
+            break;
+        }
+        else{
+            buffer[bytes_received] = '\0';
+            std::cout << "Client: " << buffer << '\n';
+            
+            if(std::string(buffer) == "exit"){
+                std::cout << "Client " << inet_ntoa(client_addr.sin_addr) << " " << ntohl(client_addr.sin_port) << " has disconnected\n";
+                break;
+            }
+        }
+    }
+}
 
 int main(){
     int server_fd;          //literally our server socket bruh
@@ -53,67 +90,76 @@ int main(){
         return EXIT_FAILURE;
     }
 
-    std::cout << "Listening on Port " << PORT << '\n';
-
-    incoming_socket = accept(server_fd, (struct sockaddr*)& client_addr, &addr_len);
-    if(incoming_socket < 0){
-        std::cout << "Aceeptance Failed\n";
-        close(server_fd);
-        return EXIT_FAILURE;
-    }
-
+    std::vector<std::thread> client_threads;
     
-    std::cout << "Client connected from " << inet_ntoa(client_addr.sin_addr) << " : "; //inet_ntoa returns in string readable form
-    std::cout << ntohs(client_addr.sin_port) << '\n';
-    std::cout << "Type 'disconnect' to disconnect the client\n";
-
-    //Infinite loop to accept messages from the client
-    
-    std::string message;
-
-    while(true){
-        std::memset(buffer, 0, BUFFER_SIZE);        //clearing buffer like in client
-        
-        ssize_t bytes_received = recv(incoming_socket, buffer, BUFFER_SIZE - 1, 0);
-        if(bytes_received < 0){
-            perror("Receive Failed\n");
-            break;
-        }
-        else if(bytes_received == 0){
-            std::cout << "Client Disconnected\n";
-            break;
-        }
-        else{
-            buffer[BUFFER_SIZE] = '\0';
-            std::cout << "Client: " << buffer << '\n';
-
-            if(std::string(buffer) == "exit"){
-                std::cout << "Client side disconnection.\n";
+    std::thread console_input_thread([](){
+        std::string input;
+        while(server_running.load()){
+            std::getline(std::cin, input);
+            if(input == "disconnect"){
+                std::cout << "Server will shutdown\n";
+                server_running.store(false);        //tells all threads to terminate
                 break;
             }
         }
-// ---------------------ONLY FOR TESTING----------------------
-// ---------------------Only Clients send messages----------------
+    });
+
+
+    std::cout << "Listening on Port " << PORT << '\n';
+
     
-        std::cout << "Server: ";
-        std::getline(std::cin, message);        //use the message variable to do the same
-        if(message == "disconnect"){
-            std::cout << "Closing Server\n";
+    while(server_running.load()){
+        int incoming_socket = accept(server_fd, (struct sockaddr*)& client_addr, &addr_len);
+        if(incoming_socket < 0){
+            perror("Client connection error\n");
             break;
         }
-        
-        ssize_t bytes_sent = send(incoming_socket, message.c_str(), message.length(), 0);
-        if(bytes_sent == -1){
-            perror("Failed to send message\n");
-            // close(server_fd);    already done outside the loop
-            break;
-        }
-        else if(bytes_sent == 0){
-            perror("Client closed connection\n");
-            break;
-        } 
-        
+        client_threads.emplace_back(handle_client, incoming_socket, client_addr);
     }
+
+//     while(true){
+//         std::memset(buffer, 0, BUFFER_SIZE);        //clearing buffer like in client
+        
+//         ssize_t bytes_received = recv(incoming_socket, buffer, BUFFER_SIZE - 1, 0);
+//         if(bytes_received < 0){
+//             perror("Receive Failed\n");
+//             break;
+//         }
+//         else if(bytes_received == 0){
+//             std::cout << "Client Disconnected\n";
+//             break;
+//         }
+//         else{
+//             buffer[BUFFER_SIZE] = '\0';
+//             std::cout << "Client: " << buffer << '\n';
+
+//             if(std::string(buffer) == "exit"){
+//                 std::cout << "Client side disconnection.\n";
+//                 break;
+//             }
+//         }
+// // ---------------------ONLY FOR TESTING----------------------
+// // ---------------------Only Clients send messages----------------
+    
+//         std::cout << "Server: ";
+//         std::getline(std::cin, message);        //use the message variable to do the same
+//         if(message == "disconnect"){
+//             std::cout << "Closing Server\n";
+//             break;
+//         }
+        
+//         ssize_t bytes_sent = send(incoming_socket, message.c_str(), message.length(), 0);
+//         if(bytes_sent == -1){
+//             perror("Failed to send message\n");
+//             // close(server_fd);    already done outside the loop
+//             break;
+//         }
+//         else if(bytes_sent == 0){
+//             perror("Client closed connection\n");
+//             break;
+//         } 
+        
+//     }
 
     close(incoming_socket);
     close(server_fd);
