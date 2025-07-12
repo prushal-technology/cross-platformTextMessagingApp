@@ -44,6 +44,9 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
             }
         }
     }
+
+    close(client_socket);
+    std::cout << "Client " << inet_ntoa(client_addr.sin_addr) << " " << ntohl(client_addr.sin_port) << " thread has been terminated\n";
 }
 
 int main(){
@@ -92,6 +95,7 @@ int main(){
 
     std::vector<std::thread> client_threads;
     
+    // https://en.cppreference.com/w/cpp/thread/thread.html
     std::thread console_input_thread([](){
         std::string input;
         while(server_running.load()){
@@ -114,52 +118,20 @@ int main(){
             perror("Client connection error\n");
             break;
         }
+        //create new thread
         client_threads.emplace_back(handle_client, incoming_socket, client_addr);
+
+        //detach safely return all the thread's resources to the operating system
+        client_threads.back().detach();
     }
 
-//     while(true){
-//         std::memset(buffer, 0, BUFFER_SIZE);        //clearing buffer like in client
-        
-//         ssize_t bytes_received = recv(incoming_socket, buffer, BUFFER_SIZE - 1, 0);
-//         if(bytes_received < 0){
-//             perror("Receive Failed\n");
-//             break;
-//         }
-//         else if(bytes_received == 0){
-//             std::cout << "Client Disconnected\n";
-//             break;
-//         }
-//         else{
-//             buffer[BUFFER_SIZE] = '\0';
-//             std::cout << "Client: " << buffer << '\n';
+    // check cppreference documentation
+    //joinable = running, so if it is, we use join() to wait till it finishes 
+    //running and then terminate it
+    if(console_input_thread.joinable()){
+        console_input_thread.join();
+    }
 
-//             if(std::string(buffer) == "exit"){
-//                 std::cout << "Client side disconnection.\n";
-//                 break;
-//             }
-//         }
-// // ---------------------ONLY FOR TESTING----------------------
-// // ---------------------Only Clients send messages----------------
-    
-//         std::cout << "Server: ";
-//         std::getline(std::cin, message);        //use the message variable to do the same
-//         if(message == "disconnect"){
-//             std::cout << "Closing Server\n";
-//             break;
-//         }
-        
-//         ssize_t bytes_sent = send(incoming_socket, message.c_str(), message.length(), 0);
-//         if(bytes_sent == -1){
-//             perror("Failed to send message\n");
-//             // close(server_fd);    already done outside the loop
-//             break;
-//         }
-//         else if(bytes_sent == 0){
-//             perror("Client closed connection\n");
-//             break;
-//         } 
-        
-//     }
 
     close(incoming_socket);
     close(server_fd);

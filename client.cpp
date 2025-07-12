@@ -4,10 +4,78 @@
 #include <arpa/inet.h>     
 #include <unistd.h>         //only use so far - close(client_socket) uni as in UNIX      
 #include <cstring>          //for c style null terminated strings (duh)
+#include <mutex>
+#include <thread>
+#include <string>
 
 #define SERVER_IP "127.0.0.1"       //local host
 #define PORT 8080                   //some port to listen for messages
 #define BUFFER_SIZE 1024           //message buffer size
+
+std::mutex count_mutex;
+
+void send_message(int client_socket){
+    std::string message;
+    while(true){
+        {   //put std::lock_guard in parenthesis so that it goes out of scope
+            //Thus "You" will only be printed when the console is free
+            std::lock_guard<std::mutex> lock(count_mutex);
+            std::cout << "You: ";
+        }
+        std::getline(std::cin, message);
+
+        if(message == "exit"){
+            {
+                std::lock_guard<std::mutex> lock(count_mutex);
+                std::cout << "Disconnecting...\n";
+            }
+            break;
+
+        }
+
+        //will send to server, we don't need to check
+        ssize_t bytesToSend = send(client_socket, message.c_str(), message.length(), 0);
+        if(bytesToSend < 0){
+            std::lock_guard<std::mutex> lock(count_mutex);
+            perror("Could not send message\n");
+            break;
+        }
+        else if(bytesToSend == 0){
+            {
+                std::lock_guard<std::mutex> lock(count_mutex);
+                perror("Server has disconnected\n");
+            }
+            break;
+        }
+    }
+}
+
+void receive_message(int client_socket){
+    char buffer[BUFFER_SIZE]; //local buffer
+    while(true){
+        std::memset(buffer, 0, BUFFER_SIZE);
+
+        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        if(bytes_received < 0){
+            std::lock_guard<std::mutex> lock(count_mutex);
+            perror("Failed to receive data from the server\n");
+            break;
+        }
+        else if(bytes_received == 0){
+            perror("Server disconnected\n");
+            break;
+        }
+        else{
+            buffer[BUFFER_SIZE] = '\0';
+            {
+                std::lock_guard<std::mutex> lock(count_mutex);
+                std::cout << "Server: " << buffer << '\n';
+                // std::flush; ?
+            }
+        }
+    }
+
+}
 
 int main(){
     int client_socket;      //this is the socket aka gateway - basically the "door"
@@ -42,58 +110,22 @@ int main(){
 
     std::cout << "Connected to server\n";
     std::cout << "Server IP: " << SERVER_IP << " : " << PORT << '\n';
-    std::cout << "Type 'leave' to disconnect\n";
+    std::cout << "Type 'exit' to disconnect\n";
 
-    std::string message;        //don't initialize it
+    // std::string message;        //don't initialize it
 
-    //Infinite loop to send messages 
+    //so the function we want to parallize + the parameter
+    std::thread send_thread(send_message, client_socket);
+    std::thread receive_thread(receive_message, client_socket);
 
-    while(true){
-        //inifinite loop to accept message 
-        std::cout << "You: ";
-        std::getline(std::cin, message);
-
-        if(message == "leave"){
-            std::cout << "Disconnecting...\n";
-            break;          //exiting loop here
-        }
-
-        //hey hey: ssize_t is just size_t with a sign!
-        ssize_t bytes_tosend = send(client_socket, message.c_str(), message.length(), 0);
-        if(bytes_tosend == -1){
-            perror("Error: Send failed");
-            break;      //exit loop duh
-        }
-        else if(bytes_tosend == 0){
-            std::cout << "Server unexpectedly closed connection\n";
-            break;
-        }
-
-        //basically copies character (here ASCII 0) to buffer of size buffer_size
-        //so we're gonna clear the buffer - that's what memset does
-        std::memset(buffer, 0, BUFFER_SIZE);        //found in <cstring>
-        
-        //buffer_size - 1 to store the null terminator 
-        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
-
-        if(bytes_received == -1){
-            perror("Error: Receive failed\n");
-            break;
-        }
-        else if(bytes_received == 0){
-            std::cout << "Server disconnected\n";
-            break;
-        }
-        else{
-            buffer[bytes_received] = '\0';      //DON'T FORGET TO APPEND NULL TERMINATOR
-            std::cout << "Server: " << buffer << '\n';
-        }
-    }
-
+    send_thread.join();
 
     //outside the while loop you need to close the socket
     close(client_socket);
     std::cout << "Socket closed\n";
+
+    receive_thread.join();
+    std::cout << "Exiting application\n";
     return 0;   
 }
 
