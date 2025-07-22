@@ -4,15 +4,18 @@
 #include <arpa/inet.h>     
 #include <unistd.h>         //only use so far - close(client_socket) uni as in UNIX      
 #include <cstring>          //for c style null terminated strings (duh)
+
 #include <mutex>
 #include <thread>
 #include <string>
+#include <atomic>
 
 #define SERVER_IP "127.0.0.1"       //local host
 #define PORT 8080                   //some port to listen for messages
 #define BUFFER_SIZE 1024           //message buffer size
 
 std::mutex count_mutex;
+std::atomic<bool> stop_thread(false);
 
 void send_message(int client_socket){
     std::string message;
@@ -52,17 +55,22 @@ void send_message(int client_socket){
 
 void receive_message(int client_socket){
     char buffer[BUFFER_SIZE]; //local buffer
-    while(true){
+    while(!stop_thread){
         std::memset(buffer, 0, BUFFER_SIZE);
 
         ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
         if(bytes_received < 0){
-            std::lock_guard<std::mutex> lock(count_mutex);
-            perror("Failed to receive data from the server\n");
+            {
+                std::lock_guard<std::mutex> lock(count_mutex);
+                perror("Failed to receive data from the server\n");
+            }
             break;
         }
         else if(bytes_received == 0){
-            perror("Server disconnected\n");
+            {
+                std::lock_guard<std::mutex> lock(count_mutex);
+                perror("Server disconnected\n");
+            }
             break;
         }
         else{
@@ -74,7 +82,7 @@ void receive_message(int client_socket){
             }
         }
     }
-
+    std::cout << "Exiting server thread\n";
 }
 
 int main(){
@@ -84,6 +92,7 @@ int main(){
 
     //Create a socket
 
+    //0 means in protocol means TCP
     if((client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0){
         perror("Error: Socket creatoin failed\n");  //basically prints this message with the error
         return EXIT_FAILURE;             //basically "return 1"
@@ -124,6 +133,8 @@ int main(){
     close(client_socket);
     std::cout << "Socket closed\n";
 
+    //problem: Closes only when server exits
+    stop_thread = true;
     receive_thread.join();
     std::cout << "Exiting application\n";
     return 0;   
