@@ -14,61 +14,70 @@
 #define PORT 8080                   //some port to listen for messages
 #define BUFFER_SIZE 1024           //message buffer size
 
-std::mutex count_mutex;
-std::atomic<bool> stop_thread(false);
+std::mutex console_mutex;
+std::atomic<bool> client_active(true);
 
 void send_message(int client_socket){
     std::string message;
-    while(true){
+    while(client_active.load()){
         {   //put std::lock_guard in parenthesis so that it goes out of scope
             //Thus "You" will only be printed when the console is free
-            std::lock_guard<std::mutex> lock(count_mutex);
+            std::lock_guard<std::mutex> lock(console_mutex);
             std::cout << "You: ";
         }
         std::getline(std::cin, message);
 
         if(message == "exit"){
             {
-                std::lock_guard<std::mutex> lock(count_mutex);
+                std::lock_guard<std::mutex> lock(console_mutex);
                 std::cout << "Disconnecting...\n";
             }
+            ssize_t bytes_sent = send(client_socket, message.c_str(), message.length(), 0);
+            if(bytes_sent < 0){
+                std::lock_guard<std::mutex> lock(console_mutex);
+                perror("Error sending 'exit' message\n");
+            }
+            client_active.store(false);     //signals the main thread and receive_message to stop
             break;
-
         }
 
         //will send to server, we don't need to check
         ssize_t bytesToSend = send(client_socket, message.c_str(), message.length(), 0);
         if(bytesToSend < 0){
-            std::lock_guard<std::mutex> lock(count_mutex);
+            std::lock_guard<std::mutex> lock(console_mutex);
             perror("Could not send message\n");
             break;
         }
         else if(bytesToSend == 0){
             {
-                std::lock_guard<std::mutex> lock(count_mutex);
+                std::lock_guard<std::mutex> lock(console_mutex);
                 perror("Server has disconnected\n");
+                client_active.store(false);
             }
             break;
         }
     }
+    std::lock_guard<std::mutex> lock(console_mutex);
+    std::cout << "Send message thread terminated\n";
 }
 
 void receive_message(int client_socket){
     char buffer[BUFFER_SIZE]; //local buffer
-    while(!stop_thread){
+    while(client_active.load()) {
         std::memset(buffer, 0, BUFFER_SIZE);
 
         ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
         if(bytes_received < 0){
             {
-                std::lock_guard<std::mutex> lock(count_mutex);
+                std::lock_guard<std::mutex> lock(console_mutex);
                 perror("Failed to receive data from the server\n");
             }
             break;
         }
         else if(bytes_received == 0){
             {
-                std::lock_guard<std::mutex> lock(count_mutex);
+                std::lock_guard<std::mutex> lock(console_mutex);
+                client_active.store(false);
                 perror("Server disconnected\n");
             }
             break;
@@ -76,19 +85,20 @@ void receive_message(int client_socket){
         else{
             buffer[BUFFER_SIZE] = '\0';
             {
-                std::lock_guard<std::mutex> lock(count_mutex);
+                std::lock_guard<std::mutex> lock(console_mutex);
                 std::cout << "Server: " << buffer << '\n';
                 // std::flush; ?
             }
         }
     }
-    std::cout << "Exiting server thread\n";
+    std::lock_guard<std::mutex> lock(console_mutex);
+    std::cout << "Receive message thread terminated\n";
 }
 
 int main(){
     int client_socket;      //this is the socket aka gateway - basically the "door"
     struct sockaddr_in server_addr; // Structure to hold server's address information ; comes from <netinet/in.h>
-    char buffer[BUFFER_SIZE] = {0};     //initialize entire array with 0
+    // char buffer[BUFFER_SIZE] = {0};     //initialize entire array with 0
 
     //Create a socket
 
@@ -129,15 +139,16 @@ int main(){
 
     send_thread.join();
 
-    //outside the while loop you need to close the socket
-    close(client_socket);
-    std::cout << "Socket closed\n";
+    if(client_socket != -1){
+        close(client_socket);
+        client_socket = -1;     //closes client_socket
+        std::cout << "Client socket closed\n";
+    }
 
-    //problem: Closes only when server exits
-    stop_thread = true;
+    //wait for receive thread to finish cleanup
     receive_thread.join();
-    std::cout << "Exiting application\n";
-    return 0;   
+    std::cout << "Exiting client application\n";
+    return 0;  
 }
 
 
