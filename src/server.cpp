@@ -8,21 +8,22 @@
 #include <thread>
 #include <vector>
 #include <atomic>
+#include <mutex>
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 8080       //a free port for local hosting
 #define BUFFER_SIZE 1024
 #define TOTAL_CONNECTIONS 5
 
-
-std::atomic<bool> server_running(true);
+std::mutex console_mutex;
+std::atomic<bool> server_active(true);
 
 void handle_client(int client_socket, struct sockaddr_in client_addr){
     char buffer[BUFFER_SIZE] = {0};
     std::cout << "Client connected from: " << inet_ntoa(client_addr.sin_addr) 
         << " " << client_addr.sin_port << '\n';
 
-    while(server_running.load()){
+    while(server_active.load()){
         std::memset(buffer, 0, BUFFER_SIZE);
 
         ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
@@ -98,21 +99,22 @@ int main(){
     // https://en.cppreference.com/w/cpp/thread/thread.html
     std::thread console_input_thread([](){
         std::string input;
-        while(server_running.load()){
+        while(server_active.load()){
             std::getline(std::cin, input);
             if(input == "disconnect"){
                 std::cout << "Server will shutdown\n";
-                server_running.store(false);        //tells all threads to terminate
+                server_active.store(false);        //tells all threads to terminate
                 break;
             }
         }
     });
 
 
+    
     std::cout << "Listening on Port " << PORT << '\n';
 
     
-    while(server_running.load()){
+    while(server_active.load()){
         int incoming_socket = accept(server_fd, (struct sockaddr*)& client_addr, &addr_len);
         if(incoming_socket < 0){
             perror("Client connection error\n");
