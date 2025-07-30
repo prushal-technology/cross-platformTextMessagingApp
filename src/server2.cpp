@@ -114,10 +114,48 @@ int main(){
                     std::cout << "Server will shutdown\n";
                 }
                 server_active.store(false);
-                if(server_fd != -1){
-                    close(server_fd);
+
+                int dummy_sock = -1;
+                try{
+                    dummy_sock = socket(AF_INET, SOCK_STREAM, 0);
+                    if(dummy_sock < 0){
+                        ownmux lock(console_mutex);
+                        perror("Error creating dummy socket for unblocking accept()\n");
+                    }
+                    else{
+                        struct sockaddr_in serv_addr;
+                        serv_addr.sin_family = AF_INET;
+                        serv_addr.sin_port = htons(PORT);
+                        inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr);
+
+                        //connection needs to reach accept queue - that's all
+                        connect(dummy_sock, (struct sockaddr*)& serv_addr, sizeof(serv_addr));
+
+                        //don't check if worked or nah - just close
+                        close(dummy_sock);
+                        dummy_sock = -1;
+                        {
+                            ownmux lock(console_mutex);
+                            std::cout << "Dummy connection made to unblock aceept().\n";
+                        }
+                    }
+                }catch(const std::exception& e){
+                    ownmux lock(console_mutex);
+                    //all what does is return an explanation string
+                    std::cerr << "Exception during dummy connection: " << e.what() << '\n';
                 }
-                break;
+
+
+
+                if (server_fd != -1) {
+                    close(server_fd);
+                    // No need to set server_fd = -1 here as main is about to exit
+                    {
+                        std::lock_guard<std::mutex> lock(console_mutex);
+                        std::cout << "Listening socket (server_fd) closed by console thread.\n";
+                    }
+                }
+                break; // Exit console input loop
             }
         }
         ownmux lock(console_mutex);
@@ -142,6 +180,15 @@ int main(){
                 perror("Critical Error: Client connection accpetance failure\n");
             }
             break;
+        }
+
+        // If a connection was successfully accepted before shutdown, handle it
+        // Check server_active one more time after accept in case it became false *just* after accept returned.
+        if (!server_active.load()) {
+            std::lock_guard<std::mutex> lock(console_mutex);
+            std::cout << "Accepted connection during shutdown phase, closing immediately.\n";
+            close(incoming_socket); // Close the newly accepted socket
+            break; // Exit the loop
         }
 
         client_threads.emplace_back(handle_client, incoming_socket, client_addr);
