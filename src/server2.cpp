@@ -109,13 +109,19 @@ int main(){
         while(server_active.load()){
             std::getline(std::cin, input);
             if(input == "disconnect"){
-                {ownmux lock(console_mutex);
-                std::cout << "Server will shutdown\n";}
+                {
+                    ownmux lock(console_mutex);
+                    std::cout << "Server will shutdown\n";
+                }
                 server_active.store(false);
+                if(server_fd != -1){
+                    close(server_fd);
+                }
                 break;
             }
         }
-        close(server_fd);
+        ownmux lock(console_mutex);
+        std::cout << "Console input thread has been terminated\n";
     });
 
     {
@@ -149,8 +155,15 @@ int main(){
         console_input_thread.join();
     }
 
-    close(incoming_socket);
-    close(server_fd);
+    //our incoming socket function TAKES CARE OF THIS!
+    // close(incoming_socket);
+    if(server_fd != -1){
+        close(server_fd);
+        ownmux lock(console_mutex);
+        std::cout << "Listening (serrver) socket has been closed\n";
+    }
+
+    ownmux lock(console_mutex);
     std::cout << "Closing application\n";
     return 0;
 }
