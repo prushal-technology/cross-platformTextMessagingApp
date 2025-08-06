@@ -1,5 +1,5 @@
-#base image uses a compiler, necessary build tools
-FROM gcc:latest AS builder
+#Stage 1: Build the application
+FROM gcc:12.2.0 as builder
 
 #sets working directory inside the container
 WORKDIR /app
@@ -10,19 +10,20 @@ WORKDIR /app
     # g++ 
 
 # the period indicates the current directory
-COPY main.cpp .
+COPY server.cpp .
 
-RUN g++ -o ruby main.cpp
+RUN g++ -std=c++17 -o  server_app server.cpp -lpthread -lrt 
 
-FROM debian:stable-slim
+
+#Stage 2: Creating a minimal image
+FROM gcc:12.2.0 
 
 #working directory for the app
 WORKDIR /app 
 
 #copy source destination
-COPY --from=builder /app/ruby .
+COPY --from=builder /app/server_app .
 
-CMD ["./ruby"]
+EXPOSE 8080
 
-#for running the api when the container starts??
-
+CMD ["./server_app"]

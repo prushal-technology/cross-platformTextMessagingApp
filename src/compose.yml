@@ -1,9 +1,13 @@
 services:
-  cpp-writer:
-  # Use the 'build' instruction to tell Docker Compose to build the image
-    # from the Dockerfile in the current directory ('.').
-    build: .
+  cpp-server:
+  #build image from dockerfile in current directory
+    build:
+      context: .
+      dockerfile: Dockerfile 
 
-    # used to persist the created file
-    volumes:
-      - ./output:/app
+    #mapping containers port to a port from the host machine
+    ports:
+      - "8080:8080"
+
+    stdin_open: true  #keeps stdin open aka we can give console input
+    tty: true         #whatever this means
