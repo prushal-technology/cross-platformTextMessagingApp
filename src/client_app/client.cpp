@@ -19,9 +19,25 @@ std::atomic<bool> client_active(true);
 
 void send_message(int client_socket){
     std::string message;
+
+    //handshake + prompting user for username
+    {
+        std::lock_guard<std::mutex> lock(console_mutex);
+        std::cout << "Please enter a username: ";
+    }
+    std::getline(std::cin, message);
+
+    // Send the username to the server
+    ssize_t bytes_sent = send(client_socket, message.c_str(), message.length(), 0);
+    if(bytes_sent < 0){
+        std::lock_guard<std::mutex> lock(console_mutex);
+        perror("Error sending username\n");
+        return;
+    }
+
+    // Main message loop
     while(client_active.load()){
-        {   //put std::lock_guard in parenthesis so that it goes out of scope
-            //Thus "You" will only be printed when the console is free
+        {
             std::lock_guard<std::mutex> lock(console_mutex);
             std::cout << "You: ";
         }
@@ -32,23 +48,22 @@ void send_message(int client_socket){
                 std::lock_guard<std::mutex> lock(console_mutex);
                 std::cout << "Disconnecting...\n";
             }
-            ssize_t bytes_sent = send(client_socket, message.c_str(), message.length(), 0);
+            bytes_sent = send(client_socket, message.c_str(), message.length(), 0);
             if(bytes_sent < 0){
                 std::lock_guard<std::mutex> lock(console_mutex);
                 perror("Error sending 'exit' message\n");
             }
-            client_active.store(false);     //signals the main thread and receive_message to stop
+            client_active.store(false);
             break;
         }
 
-        //will send to server, we don't need to check
-        ssize_t bytesToSend = send(client_socket, message.c_str(), message.length(), 0);
-        if(bytesToSend < 0){
+        ssize_t bytes_to_send = send(client_socket, message.c_str(), message.length(), 0);
+        if(bytes_to_send < 0){
             std::lock_guard<std::mutex> lock(console_mutex);
             perror("Could not send message\n");
             break;
         }
-        else if(bytesToSend == 0){
+        else if(bytes_to_send == 0){
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
                 perror("Server has disconnected\n");

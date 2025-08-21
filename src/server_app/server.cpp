@@ -20,10 +20,30 @@ std::atomic<bool> server_active(true);    //this for the entire server
 
 void handle_client(int client_socket, struct sockaddr_in client_addr){
     char buffer[BUFFER_SIZE] = {0};
+    std::string username;       //for username
     {
         std::lock_guard<std::mutex> lock(console_mutex);
         std::cout << "Client connected from: " << inet_ntoa(client_addr.sin_addr)
             << " " << client_addr.sin_port << '\n';
+    }
+
+    //for getting username
+    ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+    if (bytes_received > 0) {
+        buffer[bytes_received] = '\0';
+        username = buffer;
+        {
+            std::lock_guard<std::mutex> lock(console_mutex);
+            std::cout << "Client username set to: " << username << '\n';
+        }
+    } else {
+        // Handle a failed initial username transmission
+        {
+            std::lock_guard<std::mutex> lock(console_mutex);
+            perror("Failed to receive username from client");
+        }
+        close(client_socket);
+        return;
     }
 
     while(server_active.load()){
@@ -40,7 +60,7 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
         else if(bytes_received == 0){
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
-                std::cout << "Client has disconnected\n";
+                std::cout << username << " has disconnected\n";
             }
             break;
         }
@@ -48,13 +68,12 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
             buffer[bytes_received] = '\0';
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
-                std::cout << "Client: " << buffer << '\n';
+                std::cout << username << ": " << buffer << '\n';
             }
             if(std::string(buffer) == "exit"){
                 {
                     std::lock_guard<std::mutex> lock(console_mutex);
-                    std::cout << "Client " << inet_ntoa(client_addr.sin_addr) 
-                        << " " << ntohl(client_addr.sin_port) << " has disconnected\n";
+                    std::cout << "Client " << username << " has disconnected by request\n";
                 }
                 break;
             }
