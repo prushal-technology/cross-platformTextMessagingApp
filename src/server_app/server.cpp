@@ -10,7 +10,12 @@
 #include <atomic>
 #include <mutex>
 
-#define SERVER_IP "127.0.0.1"
+//for message format and timestamp
+#include <iomanip>
+#include <chrono>
+#include <ctime>
+
+#define SERVER_IP "10.171.110.1"
 #define PORT 8080       //a free port for local hosting
 #define BUFFER_SIZE 1024
 #define TOTAL_CONNECTIONS 5
@@ -67,8 +72,17 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
         else{
             buffer[bytes_received] = '\0';
             {
+                // Get current time
+                auto now = std::chrono::system_clock::now();
+                std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+                std::tm* local_tm = std::localtime(&now_c);
+
                 std::lock_guard<std::mutex> lock(console_mutex);
-                std::cout << username << ": " << buffer << '\n';
+
+                // Print username and timestamp
+                std::cout << username << " " << std::put_time(local_tm, "%H:%M") << "\n";
+                // Print message
+                std::cout << buffer << '\n';
             }
             if(std::string(buffer) == "exit"){
                 {

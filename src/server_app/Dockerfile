@@ -12,7 +12,7 @@ WORKDIR /app
 # the period indicates the current directory
 COPY server.cpp .
 
-RUN g++ -std=c++17 -o  server_app server.cpp -lpthread -lrt 
+RUN g++ -std=c++20 -o  server_app server.cpp -lpthread -lrt 
 
 
 #Stage 2: Creating a minimal image

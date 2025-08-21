@@ -10,7 +10,7 @@
 #include <string>
 #include <atomic>
 
-#define SERVER_IP "127.0.0.1"       //local host
+#define SERVER_IP "127.0.1.1"       //local host
 #define PORT 8080                   //some port to listen for messages
 #define BUFFER_SIZE 1024           //message buffer size
 
