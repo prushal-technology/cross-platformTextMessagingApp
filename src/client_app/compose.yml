@@ -1,5 +1,3 @@
-# Use version 3.8 of the Docker Compose file format.
-version: '3.8'
 
 # Define the services, which are essentially the containers to be built and run.
 services:

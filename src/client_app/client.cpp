@@ -122,7 +122,7 @@ int main(){
     //YOU FORGOT TO CONNECT CLIENT TO SERVER BRUH
 
     if(connect(client_socket, (struct sockaddr*)& server_addr, sizeof(server_addr))){
-        perror("Connectoin Failed\n");
+        perror("Connection Failed\n");
         close(client_socket);
         return EXIT_FAILURE;
     }

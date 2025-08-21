@@ -1,5 +1,5 @@
 #Stage 1: Build the application
-FROM gcc:12.2.0 as builder
+FROM gcc:12.2.0 AS builder
 
 #sets working directory inside the container
 WORKDIR /app
