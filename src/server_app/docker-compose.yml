@@ -1,0 +1,10 @@
+version: "3.9"
+
+services:
+  cpp-server:
+    image: cpp-server:v3
+    container_name: cpp_server
+    network_mode: host
+    stdin_open: true    
+    tty: true           
+    restart: unless-stopped

@@ -15,13 +15,23 @@
 #include <chrono>
 #include <ctime>
 
-#define SERVER_IP "10.171.110.1"
+//redesign how client communicates with server, and add server broadcast feature
+#include <map>
+
+#define SERVER_IP "127.0.1.1"
 #define PORT 8080       //a free port for local hosting
 #define BUFFER_SIZE 1024
-#define TOTAL_CONNECTIONS 5
+#define TOTAL_CONNECTIONS 10        //this can be whatever
+
+std::map<int, std::string> clients; //so key=clientsocket and value=username
+std::mutex clients_mutex;
 
 std::mutex console_mutex;
 std::atomic<bool> server_active(true);    //this for the entire server
+
+using ownmux = std::lock_guard<std::mutex>;
+
+void broadcast_message(const std::string& message, int sender_socket);  //forward decl
 
 void handle_client(int client_socket, struct sockaddr_in client_addr){
     char buffer[BUFFER_SIZE] = {0};
@@ -38,69 +48,92 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
         buffer[bytes_received] = '\0';
         username = buffer;
         {
-            std::lock_guard<std::mutex> lock(console_mutex);
-            std::cout << "Client username set to: " << username << '\n';
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            clients[client_socket] = username;
         }
-    } else {
+
+        std::string join_msg = "[SERVER] " + username + " has joined.";
+        {
+            ownmux lock(console_mutex);
+            std::cout << join_msg << '\n';
+        }
+        broadcast_message(join_msg, client_socket);
+    }
+    else {
         // Handle a failed initial username transmission
         {
-            std::lock_guard<std::mutex> lock(console_mutex);
+            ownmux lock(console_mutex);
             perror("Failed to receive username from client");
         }
         close(client_socket);
         return;
     }
 
-    while(server_active.load()){
+    while (server_active.load()) {
         std::memset(buffer, 0, BUFFER_SIZE);
+        bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
 
-        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
-        if(bytes_received < 0){
-            {
-                std::lock_guard<std::mutex> lock(console_mutex);
-                perror("Failed to receive message from client\n");
-            }
+        if (bytes_received <= 0) {
+            // Error or client disconnected
             break;
         }
-        else if(bytes_received == 0){
-            {
-                std::lock_guard<std::mutex> lock(console_mutex);
-                std::cout << username << " has disconnected\n";
-            }
+
+        buffer[bytes_received] = '\0';
+        std::string received_msg(buffer);
+
+        if (received_msg == "exit") {
             break;
         }
-        else{
-            buffer[bytes_received] = '\0';
-            {
-                // Get current time
-                auto now = std::chrono::system_clock::now();
-                std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-                std::tm* local_tm = std::localtime(&now_c);
-
-                std::lock_guard<std::mutex> lock(console_mutex);
-
-                // Print username and timestamp
-                std::cout << username << " " << std::put_time(local_tm, "%H:%M") << "\n";
-                // Print message
-                std::cout << buffer << '\n';
-            }
-            if(std::string(buffer) == "exit"){
-                {
-                    std::lock_guard<std::mutex> lock(console_mutex);
-                    std::cout << "Client " << username << " has disconnected by request\n";
-                }
-                break;
-            }
+        
+        // --- MODIFIED: Message broadcasting logic ---
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+        std::tm* local_tm = std::localtime(&now_c);
+        
+        std::stringstream ss;
+        ss << "[" << std::put_time(local_tm, "%H:%M") << "] " << username << ": " << received_msg;
+        std::string formatted_message = ss.str();
+        
+        // Log to server console
+        {
+            std::lock_guard<std::mutex> lock(console_mutex);
+            std::cout << formatted_message << std::endl;
         }
+        
+        // Broadcast to other clients
+        broadcast_message(formatted_message, client_socket);
+        // --------------------------------------------
     }
     
+    std::string leave_msg = "[SERVER] " + username + " has left the chat.";
+    {
+        std::lock_guard<std::mutex> lock(console_mutex);
+        std::cout << leave_msg << std::endl;
+    }
+
+    // Remove client from the map
+    {
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        clients.erase(client_socket);
+    }
+
+    // Announce departure to remaining clients
+    broadcast_message(leave_msg, -1); // -1 indicates a server message, not from a specific client
+
     close(client_socket);
-    std::lock_guard<std::mutex> lock(console_mutex);
-    std::cout << "Client " << inet_ntoa(client_addr.sin_addr) << " " 
-        << ntohl(client_addr.sin_port) << " thread has been terminated\n";
 }
 
-using ownmux = std::lock_guard<std::mutex>;
+
+void broadcast_message(const std::string& message, int sender_socket){
+    ownmux lock(clients_mutex);
+    for(const auto& pair: clients){
+        int client_sock = pair.first;
+        if(client_sock != sender_socket){
+            //why above - we don't wanna send message back to sender duh
+            send(client_sock, message.c_str(), message.length(), 0);
+        }
+    }
+}
 
 int main(){
     int server_fd;
@@ -134,7 +167,7 @@ int main(){
         return EXIT_FAILURE;
     }
 
-    std::vector<std::thread> client_threads;
+    // std::vector<std::thread> client_threads;
 
     //lambda function
     std::thread console_input_thread([&server_fd](){
@@ -142,57 +175,26 @@ int main(){
         while(server_active.load()){
             std::getline(std::cin, input);
             if(input == "disconnect"){
-                {
-                    ownmux lock(console_mutex);
-                    std::cout << "Server will shutdown\n";
-                }
+                std::lock_guard<std::mutex> lock(console_mutex);
+                std::cout << "Server shutdown initiated..." << std::endl;
                 server_active.store(false);
-
-                int dummy_sock = -1;
-                try{
-                    dummy_sock = socket(AF_INET, SOCK_STREAM, 0);
-                    if(dummy_sock < 0){
-                        ownmux lock(console_mutex);
-                        perror("Error creating dummy socket for unblocking accept()\n");
-                    }
-                    else{
-                        struct sockaddr_in serv_addr;
-                        serv_addr.sin_family = AF_INET;
-                        serv_addr.sin_port = htons(PORT);
-                        inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr);
-
-                        //connection needs to reach accept queue - that's all
-                        connect(dummy_sock, (struct sockaddr*)& serv_addr, sizeof(serv_addr));
-
-                        //don't check if worked or nah - just close
-                        close(dummy_sock);
-                        dummy_sock = -1;
-                        {
-                            ownmux lock(console_mutex);
-                            std::cout << "Dummy connection made to unblock aceept().\n";
-                        }
-                    }
-                }catch(const std::exception& e){
-                    ownmux lock(console_mutex);
-                    //all what does is return an explanation string
-                    std::cerr << "Exception during dummy connection: " << e.what() << '\n';
-                }
-
-
-
-                if (server_fd != -1) {
-                    close(server_fd);
-                    // No need to set server_fd = -1 here as main is about to exit
-                    {
-                        std::lock_guard<std::mutex> lock(console_mutex);
-                        std::cout << "Listening socket (server_fd) closed by console thread.\n";
-                    }
-                }
-                break; // Exit console input loop
+                
+                // This is a common technique to unblock a blocking call like accept()
+                // It connects to the server itself to generate an event.
+                int dummy_sock = socket(AF_INET, SOCK_STREAM, 0);
+                struct sockaddr_in serv_addr;
+                serv_addr.sin_family = AF_INET;
+                serv_addr.sin_port = htons(PORT);
+                inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr);
+                connect(dummy_sock, (struct sockaddr*)& serv_addr, sizeof(serv_addr));
+                close(dummy_sock);
+                
+                // Closing the server's listening socket will also cause accept() to fail.
+                shutdown(server_fd, SHUT_RDWR);
+                close(server_fd);
+                break;
             }
         }
-        ownmux lock(console_mutex);
-        std::cout << "Console input thread has been terminated\n";
     });
 
     {
@@ -200,50 +202,36 @@ int main(){
         std::cout << "Listening on Port " << PORT << '\n';
     }
 
-    while(server_active.load()){
-        int incoming_socket = accept(server_fd, (struct sockaddr*)& client_addr, &addr_len);
-        if(incoming_socket < 0){
-            if(!server_active.load()){
-                ownmux lock(console_mutex);
-                std::cout << "Accept operation interrupted due to server shutdown. Exiting accepting loop\n";
+    while (server_active.load()) {
+        struct sockaddr_in client_addr;
+        socklen_t addr_len = sizeof(client_addr);
+        int incoming_socket = accept(server_fd, (struct sockaddr*)&client_addr, &addr_len);
 
-            }
-            else{
-                ownmux lock(console_mutex);
-                perror("Critical Error: Client connection accpetance failure\n");
+        if (incoming_socket < 0) {
+            if (!server_active.load()) {
+                std::lock_guard<std::mutex> lock(console_mutex);
+                std::cout << "Server shutting down. No longer accepting new clients." << std::endl;
+            } else {
+                perror("Client connection acceptance failure");
             }
             break;
         }
 
-        // If a connection was successfully accepted before shutdown, handle it
-        // Check server_active one more time after accept in case it became false *just* after accept returned.
-        if (!server_active.load()) {
+        {
             std::lock_guard<std::mutex> lock(console_mutex);
-            std::cout << "Accepted connection during shutdown phase, closing immediately.\n";
-            close(incoming_socket); // Close the newly accepted socket
-            break; // Exit the loop
+            std::cout << "New connection from " << inet_ntoa(client_addr.sin_addr)
+                      << ":" << ntohs(client_addr.sin_port) << std::endl;
         }
 
-        client_threads.emplace_back(handle_client, incoming_socket, client_addr);
-
-        //this simply takes the last pushed thread, 
-        // then detaches it from std::thread (the class the created the object)
-        client_threads.back().detach();
+        // Create a new thread for the connected client.
+        std::thread client_thread(handle_client, incoming_socket, client_addr);
+        client_thread.detach(); // Detach to allow it to run independently.
     }
 
-    if(console_input_thread.joinable()){
+    if (console_input_thread.joinable()) {
         console_input_thread.join();
     }
 
-    //our incoming socket function TAKES CARE OF THIS!
-    // close(incoming_socket);
-    if(server_fd != -1){
-        close(server_fd);
-        ownmux lock(console_mutex);
-        std::cout << "Listening (serrver) socket has been closed\n";
-    }
-
-    ownmux lock(console_mutex);
-    std::cout << "Closing application\n";
+    std::cout << "Server application has closed." << std::endl;
     return 0;
 }
