@@ -86,6 +86,7 @@ void receive_message(int client_socket){
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
                 perror("Failed to receive data from the server\n");
+                client_active.store(false);
             }
             break;
         }
@@ -108,6 +109,7 @@ void receive_message(int client_socket){
     }
     std::lock_guard<std::mutex> lock(console_mutex);
     std::cout << "Receive message thread terminated\n";
+    std::cout << "Server has shutdown.\n";
 }
 
 int main(){
