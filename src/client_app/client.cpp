@@ -10,12 +10,36 @@
 #include <string>
 #include <atomic>
 
-#define SERVER_IP "127.0.1.1"       //local host
-#define PORT 8080                   //some port to listen for messages
+#include <cstdlib>          //for automatic detection of OS
+
+#define SERVER_IP "127.0.0.1"       //local host
+#define PORT 8081                   //8080 for local testing, 8081 for cloudflare test
 #define BUFFER_SIZE 1024           //message buffer size
 
 std::mutex console_mutex;
 std::atomic<bool> client_active(true);
+
+using ownmux = std::lock_guard<std::mutex>;
+
+
+void play_sound(const std::string& filepath){
+    {
+        //requires aplay to be installed on linux
+    }
+    #ifdef _WIN32
+        // Windows
+        std::string command = "start " + filepath;
+        system(command.c_str());
+    #elif __APPLE__
+        // macOS
+        std::string command = "afplay " + filepath + " &";
+        system(command.c_str());
+    #elif __linux__
+        // Linux using aplay for .wav files
+        std::string command = "aplay -q " + filepath + " &";
+        system(command.c_str());
+    #endif
+}
 
 void send_message(int client_socket){
     std::string message;
@@ -35,12 +59,19 @@ void send_message(int client_socket){
         return;
     }
 
+    // {
+    //     ownmux lock(console_mutex);
+    //     std::cout << "You: " << std::flush;
+    // }
+    
     // Main message loop
     while(client_active.load()){
         {
             std::lock_guard<std::mutex> lock(console_mutex);
             std::cout << "You: ";
         }
+        //moved "You: " uptop as the receive thread handles it
+        //and we simply need to print it once
         std::getline(std::cin, message);
 
         if(message == "exit"){
@@ -99,11 +130,15 @@ void receive_message(int client_socket){
             break;
         }
         else{
+            // requires file to present in the same directory (if not image)
+            play_sound("discord-notification.wav");
             buffer[BUFFER_SIZE] = '\0';
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
-                std::cout << "Server: " << buffer << '\n';
+                // std::cout << "\r" << buffer << '\n';    //\r is carriage return - basically moves cursor to the beginning
+                std::cout << "\n" << buffer << '\n';
                 // std::flush; ?
+                std::cout << "-> " << std::flush;
             }
         }
     }
