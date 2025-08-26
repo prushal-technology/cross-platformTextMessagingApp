@@ -74,7 +74,7 @@ void send_message(int client_socket){
         //and we simply need to print it once
         std::getline(std::cin, message);
 
-        if(message == "exit"){
+        if(message == "/exit"){
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
                 std::cout << "Disconnecting...\n";
@@ -82,7 +82,7 @@ void send_message(int client_socket){
             bytes_sent = send(client_socket, message.c_str(), message.length(), 0);
             if(bytes_sent < 0){
                 std::lock_guard<std::mutex> lock(console_mutex);
-                perror("Error sending 'exit' message\n");
+                perror("Error sending '/exit' message\n");
             }
             client_active.store(false);
             break;
@@ -181,7 +181,7 @@ int main(){
 
     std::cout << "Connected to server\n";
     std::cout << "Server IP: " << SERVER_IP << " : " << PORT << '\n';
-    std::cout << "Type 'exit' to disconnect\n";
+    std::cout << "Type '/exit' to disconnect\n";
 
     // std::string message;        //don't initialize it
 
