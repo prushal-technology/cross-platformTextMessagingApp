@@ -21,25 +21,7 @@ std::atomic<bool> client_active(true);
 
 using ownmux = std::lock_guard<std::mutex>;
 
-
-void play_sound(const std::string& filepath){
-    {
-        //requires aplay to be installed on linux
-    }
-    #ifdef _WIN32
-        // Windows
-        std::string command = "start " + filepath;
-        system(command.c_str());
-    #elif __APPLE__
-        // macOS
-        std::string command = "afplay " + filepath + " &";
-        system(command.c_str());
-    #elif __linux__
-        // Linux using aplay for .wav files
-        std::string command = "aplay -q " + filepath + " &";
-        system(command.c_str());
-    #endif
-}
+void play_sound(const std::string& filepath);       //decleration
 
 void send_message(int client_socket){
     std::string message;
@@ -131,7 +113,7 @@ void receive_message(int client_socket){
         }
         else{
             // requires file to present in the same directory (if not image)
-            play_sound("discord-notification.wav");
+            play_sound("click.wav");
             buffer[BUFFER_SIZE] = '\0';
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
@@ -201,6 +183,26 @@ int main(){
     receive_thread.join();
     std::cout << "Exiting client application\n";
     return 0;  
+}
+
+
+void play_sound(const std::string& filepath){
+    {
+        //requires aplay to be installed on linux
+    }
+    #ifdef _WIN32
+        // Windows
+        std::string command = "start " + filepath;
+        system(command.c_str());
+    #elif __APPLE__
+        // macOS
+        std::string command = "afplay " + filepath + " &";
+        system(command.c_str());
+    #elif __linux__
+        // Linux using aplay for .wav files
+        std::string command = "aplay -q " + filepath + " &";
+        system(command.c_str());
+    #endif
 }
 
 
