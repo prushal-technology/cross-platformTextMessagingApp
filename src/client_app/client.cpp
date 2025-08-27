@@ -11,6 +11,7 @@
 #include <atomic>
 
 #include <cstdlib>          //for automatic detection of OS
+#include <signal.h>         //Ctrl + C is a signal
 
 #define SERVER_IP "127.0.0.1"       //local host
 #define PORT 8081                   //8080 for local testing, 8081 for cloudflare test
@@ -21,25 +22,8 @@ std::atomic<bool> client_active(true);
 
 using ownmux = std::lock_guard<std::mutex>;
 
-
-void play_sound(const std::string& filepath){
-    {
-        //requires aplay to be installed on linux
-    }
-    #ifdef _WIN32
-        // Windows
-        std::string command = "start " + filepath;
-        system(command.c_str());
-    #elif __APPLE__
-        // macOS
-        std::string command = "afplay " + filepath + " &";
-        system(command.c_str());
-    #elif __linux__
-        // Linux using aplay for .wav files
-        std::string command = "aplay -q " + filepath + " &";
-        system(command.c_str());
-    #endif
-}
+void signal_handler(int signum);            //function declerations
+void play_sound(const std::string& filepath);
 
 void send_message(int client_socket){
     std::string message;
@@ -131,7 +115,7 @@ void receive_message(int client_socket){
         }
         else{
             // requires file to present in the same directory (if not image)
-            play_sound("discord-notification.wav");
+            play_sound("click.wav");
             buffer[BUFFER_SIZE] = '\0';
             {
                 std::lock_guard<std::mutex> lock(console_mutex);
@@ -148,6 +132,7 @@ void receive_message(int client_socket){
 }
 
 int main(){
+    // signal(SIGINT, signal_handler);     //SIGINT is a typedef for Ctrl+C. signal handler will handle signals
     int client_socket;      //this is the socket aka gateway - basically the "door"
     struct sockaddr_in server_addr; // Structure to hold server's address information ; comes from <netinet/in.h>
     // char buffer[BUFFER_SIZE] = {0};     //initialize entire array with 0
@@ -203,5 +188,25 @@ int main(){
     return 0;  
 }
 
+void signal_handler(int signum) {
+    std::cout<< " Type exit to leave session\n";
+}
 
-
+void play_sound(const std::string& filepath){
+    {
+        //requires aplay to be installed on linux
+    }
+    #ifdef _WIN32
+        // Windows
+        std::string command = "start " + filepath;
+        system(command.c_str());
+    #elif __APPLE__
+        // macOS
+        std::string command = "afplay " + filepath + " &";
+        system(command.c_str());
+    #elif __linux__
+        // Linux using aplay for .wav files
+        std::string command = "aplay -q " + filepath + " &";
+        system(command.c_str());
+    #endif
+}
