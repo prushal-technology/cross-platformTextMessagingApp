@@ -4,6 +4,8 @@
 *wav
 *txt
 .vscode
+localClient.cpp
+localClient
 ruby
 aqua
 server

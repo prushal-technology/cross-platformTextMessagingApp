@@ -85,24 +85,34 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
             break;
         }
         
-        // --- MODIFIED: Message broadcasting logic ---
-        auto now = std::chrono::system_clock::now();
-        std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-        std::tm* local_tm = std::localtime(&now_c);
-        
-        std::stringstream ss;
-        ss << "[" << std::put_time(local_tm, "%H:%M") << "] " << username << ": " << received_msg;
-        std::string formatted_message = ss.str();
-        
-        // Log to server console
-        {
-            std::lock_guard<std::mutex> lock(console_mutex);
-            std::cout << formatted_message << std::endl;
+        if (received_msg.rfind("/upload_complete ", 0) == 0) {
+            // The server's role is just to broadcast this message to all other clients.
+            broadcast_message(received_msg, client_socket);
+            
+            {
+                ownmux lock(console_mutex);
+                std::cout << "[INFO] " << username << " uploaded a file." << std::endl;
+            }
         }
-        
-        // Broadcast to other clients
-        broadcast_message(formatted_message, client_socket);
-        // --------------------------------------------
+        else{
+            //message broadcasting logic
+            auto now = std::chrono::system_clock::now();
+            std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+            std::tm* local_tm = std::localtime(&now_c);
+            
+            std::stringstream ss;
+            ss << "[" << std::put_time(local_tm, "%H:%M") << "] " << username << ": " << received_msg;
+            std::string formatted_message = ss.str();
+            
+            // Log to server console
+            {
+                std::lock_guard<std::mutex> lock(console_mutex);
+                std::cout << formatted_message << std::endl;
+            }
+            
+            // Broadcast to other clients
+            broadcast_message(formatted_message, client_socket);
+        }
     }
     
     std::string leave_msg = "[SERVER] " + username + " has left the chat.";
@@ -111,7 +121,7 @@ void handle_client(int client_socket, struct sockaddr_in client_addr){
         std::cout << leave_msg << std::endl;
     }
 
-    // Remove client from the map
+    //Remove client from the map
     {
         std::lock_guard<std::mutex> lock(clients_mutex);
         clients.erase(client_socket);
