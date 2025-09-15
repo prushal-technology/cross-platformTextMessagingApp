@@ -1,3 +1,7 @@
+## Overview ##
+A cross platform messaging CLI that allows users to send text messages to other instances of the app on a different network. This is achieved using the client-server model.
+I've used a domain and Cloudflare's DNS to route traffic across networks to a host server. The client instance must connect to the domain through a cloudflared tunnel and steps to do so are show below. Thanks to https://domain.digitalplat.org/ for providing a free domain and thanks to Cloudflare for distilling complicated network management down for beginners!
+
 Installation and Running on Linux:
 
 ## Running the Client Image ##
