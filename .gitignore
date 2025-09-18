@@ -3,6 +3,8 @@
 # references.txt 
 *wav
 *txt
+*jpg
+*png
 .vscode
 localClient.cpp
 localClient
